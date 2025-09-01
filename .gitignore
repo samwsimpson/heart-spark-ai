@@ -1,0 +1,27 @@
+# Node / Next
+node_modules/
+.npmrc
+.pnpm-debug.log*
+apps/web/.next/
+apps/web/.vercel/
+apps/web/out/
+
+# Python
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/.venv/
+.venv/
+
+# Env files & local secrets
+**/.env
+**/.env.*
+*.env
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

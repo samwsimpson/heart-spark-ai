@@ -1,0 +1,12 @@
+cat > ~/dev/heart-spark-ai/.dockerignore << 'EOF'
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+**/.env
+**/.DS_Store
+node_modules/
+.next/
+pnpm-debug.log
+dist/
+build/
+EOF

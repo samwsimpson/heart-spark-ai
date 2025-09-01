@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "heart-spark-api"
+version = "0.1.0"
+description = "Heart Spark AI backend API (FastAPI)"
+authors = ["Heart Spark Team <dev@heartspark.ai>"]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+fastapi = "^0.116.1"
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+pydantic-settings = "^2.10.1"
+python-multipart = "^0.0.20"
+
+[tool.poetry.group.dev.dependencies]
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

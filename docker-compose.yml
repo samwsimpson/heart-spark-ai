@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: heart-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: heart-redis
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ./services/api
+    container_name: heart-api
+    env_file:
+      - ./services/api/.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./services/api:/app
+    command: >
+      sh -c "poetry install --no-root --only main &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload"
+
+  web:
+    build:
+      context: ./apps/web
+    container_name: heart-web
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8080
+      NEXT_PUBLIC_WS_BASE: ws://localhost:8081
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web:/app
+    command: ["pnpm","dev","-p","3000","-H","0.0.0.0"]
+
+
+volumes:
+  pgdata:
