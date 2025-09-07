@@ -23,8 +23,9 @@ export async function GET() {
   const url = `${getRunUrl()}/health`;
   const idc = await getClient();
   const resp = await idc.request({ url, validateStatus: () => true });
-  return new Response(
-    typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data),
-    { status: resp.status, headers: { "content-type": "application/json" } }
-  );
+  const body = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
+  return new Response(body, {
+    status: resp.status,
+    headers: { "content-type": "application/json" },
+  });
 }
