@@ -25,3 +25,4 @@ apps/web/out/
 Thumbs.db
 .idea/
 .vscode/
+apps/web/pnpm-lock.yaml
