@@ -1,65 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+type HttpMethod =
+  | "GET" | "HEAD" | "POST" | "DELETE" | "PUT"
+  | "CONNECT" | "OPTIONS" | "TRACE" | "PATCH";
 
-/** Get the Cloud Run base URL from any of your env names */
+/** Required at build & runtime */
 function getRunUrl(): string {
-  const v =
-    process.env.CLOUD_RUN_URL ??
-    process.env.NEXT_PUBLIC_CLOUD_RUN_URL ??
-    process.env.GCP_RUN_URL;
-  if (!v) throw new Error("CLOUD_RUN_URL / NEXT_PUBLIC_CLOUD_RUN_URL / GCP_RUN_URL is not set");
-  return v;
+  const v = process.env.GCP_RUN_URL;
+  if (!v) {
+    throw new Error("GCP_RUN_URL env var is required");
+  }
+  return v.replace(/\/+$/, "");
 }
 
-/** Build credentials from either full JSON or email+private key */
-function getAuth(): GoogleAuth {
-  const fullJson =
-    process.env.GOOGLE_SERVICE_ACCOUNT_JSON ??
-    process.env.GCP_VER_CREDENTIALS ??
-    null;
-
-  if (fullJson) {
-    return new GoogleAuth({ credentials: JSON.parse(fullJson) });
-  }
-
+async function getIdClient() {
+  // If you provided SA email/key via env (recommended on Vercel), use them.
   const client_email = process.env.GCP_SA_EMAIL;
-  let private_key = process.env.GCP_SA_PRIVATE_KEY;
-  if (!client_email || !private_key) {
-    throw new Error("Missing service account creds: set GOOGLE_SERVICE_ACCOUNT_JSON OR GCP_SA_EMAIL + GCP_SA_PRIVATE_KEY");
-  }
-  // Vercel envs often store newlines as literal \n
-  private_key = private_key.replace(/\\n/g, "\n");
+  const private_key_raw = process.env.GCP_SA_PRIVATE_KEY;
+  const private_key = private_key_raw?.replace(/\\n/g, "\n");
 
-  return new GoogleAuth({
-    credentials: {
-      type: "service_account",
-      client_email,
-      private_key,
-      // private_key_id is optional for JWT flows
-    } as any,
+  const auth = new GoogleAuth({
+    credentials:
+      client_email && private_key
+        ? { client_email, private_key }
+        : undefined,
   });
+
+  // We want an ID token for the Cloud Run URL
+  return auth.getIdTokenClient(getRunUrl());
 }
 
-const auth = getAuth();
+function sanitizeHeaders(inHeaders: Headers): Record<string, string> {
+  const banned = new Set(["host", "connection", "content-length", "accept-encoding"]);
+  const out: Record<string, string> = {};
+  for (const [k, v] of inHeaders.entries()) {
+    if (!banned.has(k.toLowerCase())) out[k] = v;
+  }
+  return out;
+}
 
-async function proxyToRun(req: NextRequest, method: string, segs: string[]) {
-  const RUN_URL = getRunUrl();
+async function segsFrom(ctx: any): Promise<string[]> {
+  if (!ctx?.params) return [];
+  // Next 15 sometimes passes Promise<{ path: string[] }>
+  if (typeof (ctx.params as any)?.then === "function") {
+    const p = await ctx.params;
+    return p?.path ?? [];
+  }
+  return (ctx.params as any)?.path ?? [];
+}
+
+async function proxyToRun(req: NextRequest, method: HttpMethod, segs: string[]) {
+  const base = getRunUrl();
   const { search } = new URL(req.url);
-  const url =
-    RUN_URL.replace(/\/+$/, "") + "/" + (segs?.join("/") ?? "") + search;
+  const url = base + "/" + (segs?.join("/") ?? "") + search;
 
-  const idClient = await auth.getIdTokenClient(RUN_URL);
+  const idClient = await getIdClient();
 
-  const headers: Record<string, string> = {};
-  const ct = req.headers.get("content-type");
-  if (ct) headers["content-type"] = ct;
+  const headers = sanitizeHeaders(req.headers);
+  headers["x-forwarded-host"] = req.headers.get("host") || "";
 
-  const hasBody = method !== "GET" && method !== "HEAD";
-  const data = hasBody ? Buffer.from(await req.arrayBuffer()) : undefined;
+  let data: ArrayBuffer | undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    data = await req.arrayBuffer();
+  }
 
   const resp = await idClient.request({
     url,
@@ -75,22 +79,33 @@ async function proxyToRun(req: NextRequest, method: string, segs: string[]) {
     if (typeof v === "string") outHeaders.set(k, v);
   }
 
-  return new NextResponse(resp.data as any, {
+  const body =
+    resp.data instanceof ArrayBuffer ? Buffer.from(resp.data) : (resp.data as any);
+
+  return new NextResponse(body, {
     status: resp.status,
     headers: outHeaders,
   });
 }
 
-// In Next 15, context.params is a Promise
-export async function GET(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
-  const { path } = await ctx.params;
-  return proxyToRun(req, "GET", path ?? []);
+export async function GET(req: NextRequest, ctx: any) {
+  return proxyToRun(req, "GET", await segsFrom(ctx));
 }
-export async function POST(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
-  const { path } = await ctx.params;
-  return proxyToRun(req, "POST", path ?? []);
+export async function POST(req: NextRequest, ctx: any) {
+  return proxyToRun(req, "POST", await segsFrom(ctx));
 }
-export async function OPTIONS(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
-  const { path } = await ctx.params;
-  return proxyToRun(req, "OPTIONS", path ?? []);
+export async function PUT(req: NextRequest, ctx: any) {
+  return proxyToRun(req, "PUT", await segsFrom(ctx));
+}
+export async function PATCH(req: NextRequest, ctx: any) {
+  return proxyToRun(req, "PATCH", await segsFrom(ctx));
+}
+export async function DELETE(req: NextRequest, ctx: any) {
+  return proxyToRun(req, "DELETE", await segsFrom(ctx));
+}
+export async function OPTIONS(req: NextRequest, ctx: any) {
+  return proxyToRun(req, "OPTIONS", await segsFrom(ctx));
+}
+export async function HEAD(req: NextRequest, ctx: any) {
+  return proxyToRun(req, "HEAD", await segsFrom(ctx));
 }
