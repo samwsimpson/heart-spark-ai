@@ -5,43 +5,61 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const RUN_URL =
-  process.env.CLOUD_RUN_URL ?? process.env.NEXT_PUBLIC_CLOUD_RUN_URL;
-const SA_JSON =
-  process.env.GOOGLE_SERVICE_ACCOUNT_JSON ??
-  process.env.GCP_VER_CREDENTIALS ??
-  process.env.GCP_SA_KEY_JSON;
-
-if (!RUN_URL) {
-  throw new Error("CLOUD_RUN_URL env var is not set");
-}
-if (!SA_JSON) {
-  throw new Error(
-    "Service Account JSON env var is not set (set GOOGLE_SERVICE_ACCOUNT_JSON or GCP_VER_CREDENTIALS)"
-  );
+/** Get the Cloud Run base URL from any of your env names */
+function getRunUrl(): string {
+  const v =
+    process.env.CLOUD_RUN_URL ??
+    process.env.NEXT_PUBLIC_CLOUD_RUN_URL ??
+    process.env.GCP_RUN_URL;
+  if (!v) throw new Error("CLOUD_RUN_URL / NEXT_PUBLIC_CLOUD_RUN_URL / GCP_RUN_URL is not set");
+  return v;
 }
 
-const auth = new GoogleAuth({ credentials: JSON.parse(SA_JSON) });
+/** Build credentials from either full JSON or email+private key */
+function getAuth(): GoogleAuth {
+  const fullJson =
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON ??
+    process.env.GCP_VER_CREDENTIALS ??
+    null;
 
-async function proxyToRun(req: NextRequest, method: string, pathSegs: string[]) {
+  if (fullJson) {
+    return new GoogleAuth({ credentials: JSON.parse(fullJson) });
+  }
+
+  const client_email = process.env.GCP_SA_EMAIL;
+  let private_key = process.env.GCP_SA_PRIVATE_KEY;
+  if (!client_email || !private_key) {
+    throw new Error("Missing service account creds: set GOOGLE_SERVICE_ACCOUNT_JSON OR GCP_SA_EMAIL + GCP_SA_PRIVATE_KEY");
+  }
+  // Vercel envs often store newlines as literal \n
+  private_key = private_key.replace(/\\n/g, "\n");
+
+  return new GoogleAuth({
+    credentials: {
+      type: "service_account",
+      client_email,
+      private_key,
+      // private_key_id is optional for JWT flows
+    } as any,
+  });
+}
+
+const auth = getAuth();
+
+async function proxyToRun(req: NextRequest, method: string, segs: string[]) {
+  const RUN_URL = getRunUrl();
   const { search } = new URL(req.url);
   const url =
-    RUN_URL.replace(/\/+$/, "") +
-    "/" +
-    (pathSegs?.join("/") ?? "") +
-    search;
+    RUN_URL.replace(/\/+$/, "") + "/" + (segs?.join("/") ?? "") + search;
 
-  // Get an ID token client for the Cloud Run audience (RUN_URL)
   const idClient = await auth.getIdTokenClient(RUN_URL);
 
-  // Forward minimal safe headers
   const headers: Record<string, string> = {};
   const ct = req.headers.get("content-type");
   if (ct) headers["content-type"] = ct;
 
-  // Body only for non-GET/HEAD
-  const sendBody = method !== "GET" && method !== "HEAD";
-  const data = sendBody ? Buffer.from(await req.arrayBuffer()) : undefined;
+  const hasBody = method !== "GET" && method !== "HEAD";
+  const data = hasBody ? Buffer.from(await req.arrayBuffer()) : undefined;
 
   const resp = await idClient.request({
     url,
@@ -49,7 +67,7 @@ async function proxyToRun(req: NextRequest, method: string, pathSegs: string[]) 
     headers,
     data,
     responseType: "arraybuffer",
-    validateStatus: () => true, // always return the backend status
+    validateStatus: () => true,
   });
 
   const outHeaders = new Headers();
@@ -63,17 +81,15 @@ async function proxyToRun(req: NextRequest, method: string, pathSegs: string[]) 
   });
 }
 
-// NOTE: In Next 15, context.params is a *Promise*
+// In Next 15, context.params is a Promise
 export async function GET(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
   return proxyToRun(req, "GET", path ?? []);
 }
-
 export async function POST(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
   return proxyToRun(req, "POST", path ?? []);
 }
-
 export async function OPTIONS(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
   return proxyToRun(req, "OPTIONS", path ?? []);
