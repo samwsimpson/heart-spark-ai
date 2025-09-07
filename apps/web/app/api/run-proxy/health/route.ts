@@ -1,3 +1,5 @@
+import { NextResponse } from "next/server";
+export const runtime = "nodejs";
 export async function GET() {
-  return Response.json({ status: "ok", from: "run-proxy/health" });
+  return NextResponse.json({ status: "ok", from: "run-proxy/health" });
 }
