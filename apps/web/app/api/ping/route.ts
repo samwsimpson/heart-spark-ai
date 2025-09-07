@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+export const runtime = 'nodejs';
 export async function GET() {
-  return Response.json({ status: "ok" });
+  return Response.json({ status: 'ok', via: 'app-router' });
 }
