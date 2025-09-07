@@ -1,111 +1,89 @@
-import { NextRequest, NextResponse } from "next/server";
 import { GoogleAuth } from "google-auth-library";
+
+// Force runtime routing; prevents any static optimization 404s
+export const dynamic = "force-dynamic";
+// (Optional) keep Node runtime (works fine on Edge too, but Node is safest for auth libs)
+// export const runtime = "nodejs";
 
 type HttpMethod =
   | "GET" | "HEAD" | "POST" | "DELETE" | "PUT"
   | "CONNECT" | "OPTIONS" | "TRACE" | "PATCH";
 
-/** Required at build & runtime */
 function getRunUrl(): string {
-  const v = process.env.GCP_RUN_URL;
-  if (!v) {
-    throw new Error("GCP_RUN_URL env var is required");
-  }
-  return v.replace(/\/+$/, "");
+  const url = process.env.GCP_RUN_URL;
+  if (!url) throw new Error("GCP_RUN_URL is not set");
+  return url.replace(/\/+$/, "");
 }
 
 async function getIdClient() {
-  // If you provided SA email/key via env (recommended on Vercel), use them.
-  const client_email = process.env.GCP_SA_EMAIL;
-  const private_key_raw = process.env.GCP_SA_PRIVATE_KEY;
-  const private_key = private_key_raw?.replace(/\\n/g, "\n");
-
+  const email = process.env.GCP_SA_EMAIL;
+  const key = process.env.GCP_SA_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  if (!email || !key) throw new Error("GCP_SA_EMAIL or GCP_SA_PRIVATE_KEY missing");
   const auth = new GoogleAuth({
-    credentials:
-      client_email && private_key
-        ? { client_email, private_key }
-        : undefined,
+    credentials: { client_email: email, private_key: key },
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
   });
-
-  // We want an ID token for the Cloud Run URL
-  return auth.getIdTokenClient(getRunUrl());
+  const client = await auth.getIdTokenClient(getRunUrl());
+  return client;
 }
 
-function sanitizeHeaders(inHeaders: Headers): Record<string, string> {
-  const banned = new Set(["host", "connection", "content-length", "accept-encoding"]);
-  const out: Record<string, string> = {};
-  for (const [k, v] of inHeaders.entries()) {
-    if (!banned.has(k.toLowerCase())) out[k] = v;
-  }
-  return out;
-}
-
-async function segsFrom(ctx: any): Promise<string[]> {
-  if (!ctx?.params) return [];
-  // Next 15 sometimes passes Promise<{ path: string[] }>
-  if (typeof (ctx.params as any)?.then === "function") {
-    const p = await ctx.params;
-    return p?.path ?? [];
-  }
-  return (ctx.params as any)?.path ?? [];
-}
-
-async function proxyToRun(req: NextRequest, method: HttpMethod, segs: string[]) {
+async function proxyToRun(request: Request, method: HttpMethod, segs: string[]) {
   const base = getRunUrl();
-  const { search } = new URL(req.url);
-  const url = base + "/" + (segs?.join("/") ?? "") + search;
+  const { search } = new URL(request.url);
+  const path = segs?.length ? `/${segs.join("/")}` : "";
+  const url = `${base}${path}${search}`;
 
-  const idClient = await getIdClient();
-
-  const headers = sanitizeHeaders(req.headers);
-  headers["x-forwarded-host"] = req.headers.get("host") || "";
+  // Copy headers except hop-by-hop
+  const headers: Record<string, string> = {};
+  for (const [k, v] of request.headers.entries()) {
+    const lower = k.toLowerCase();
+    if (["host", "connection", "transfer-encoding", "content-length"].includes(lower)) continue;
+    headers[k] = v;
+  }
 
   let data: ArrayBuffer | undefined;
   if (method !== "GET" && method !== "HEAD") {
-    data = await req.arrayBuffer();
+    data = await request.arrayBuffer();
   }
 
+  const idClient = await getIdClient();
   const resp = await idClient.request({
     url,
     method,
     headers,
     data,
     responseType: "arraybuffer",
+    // Important for Cloud Run: pass through status codes untouched
     validateStatus: () => true,
   });
 
-  const outHeaders = new Headers();
-  for (const [k, v] of Object.entries(resp.headers ?? {})) {
-    if (typeof v === "string") outHeaders.set(k, v);
+  const respHeaders = new Headers();
+  for (const [k, v] of Object.entries(resp.headers || {})) {
+    if (typeof v === "string") respHeaders.set(k, v);
   }
 
-  const body =
-    resp.data instanceof ArrayBuffer ? Buffer.from(resp.data) : (resp.data as any);
-
-  return new NextResponse(body, {
+  return new Response(resp.data as ArrayBuffer, {
     status: resp.status,
-    headers: outHeaders,
+    headers: respHeaders,
   });
 }
 
-export async function GET(req: NextRequest, ctx: any) {
-  return proxyToRun(req, "GET", await segsFrom(ctx));
+// Next App Router handlers (Web standard Request + params)
+export async function GET(req: Request, ctx: { params: { path?: string[] } }) {
+  return proxyToRun(req, "GET", ctx.params.path ?? []);
 }
-export async function POST(req: NextRequest, ctx: any) {
-  return proxyToRun(req, "POST", await segsFrom(ctx));
+export async function POST(req: Request, ctx: { params: { path?: string[] } }) {
+  return proxyToRun(req, "POST", ctx.params.path ?? []);
 }
-export async function PUT(req: NextRequest, ctx: any) {
-  return proxyToRun(req, "PUT", await segsFrom(ctx));
+export async function OPTIONS(req: Request, ctx: { params: { path?: string[] } }) {
+  return proxyToRun(req, "OPTIONS", ctx.params.path ?? []);
 }
-export async function PATCH(req: NextRequest, ctx: any) {
-  return proxyToRun(req, "PATCH", await segsFrom(ctx));
+export async function PUT(req: Request, ctx: { params: { path?: string[] } }) {
+  return proxyToRun(req, "PUT", ctx.params.path ?? []);
 }
-export async function DELETE(req: NextRequest, ctx: any) {
-  return proxyToRun(req, "DELETE", await segsFrom(ctx));
+export async function PATCH(req: Request, ctx: { params: { path?: string[] } }) {
+  return proxyToRun(req, "PATCH", ctx.params.path ?? []);
 }
-export async function OPTIONS(req: NextRequest, ctx: any) {
-  return proxyToRun(req, "OPTIONS", await segsFrom(ctx));
-}
-export async function HEAD(req: NextRequest, ctx: any) {
-  return proxyToRun(req, "HEAD", await segsFrom(ctx));
+export async function DELETE(req: Request, ctx: { params: { path?: string[] } }) {
+  return proxyToRun(req, "DELETE", ctx.params.path ?? []);
 }
