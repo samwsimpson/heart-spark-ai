@@ -1,9 +1,10 @@
+import { NextRequest } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 
-// Force runtime routing; prevents any static optimization 404s
+// Ensure this route is always dynamic (no static optimization)
+// and uses Node runtime for google-auth-library
 export const dynamic = "force-dynamic";
-// (Optional) keep Node runtime (works fine on Edge too, but Node is safest for auth libs)
-// export const runtime = "nodejs";
+export const runtime = "nodejs";
 
 type HttpMethod =
   | "GET" | "HEAD" | "POST" | "DELETE" | "PUT"
@@ -23,19 +24,18 @@ async function getIdClient() {
     credentials: { client_email: email, private_key: key },
     scopes: ["https://www.googleapis.com/auth/cloud-platform"],
   });
-  const client = await auth.getIdTokenClient(getRunUrl());
-  return client;
+  return auth.getIdTokenClient(getRunUrl());
 }
 
-async function proxyToRun(request: Request, method: HttpMethod, segs: string[]) {
+async function proxyToRun(req: NextRequest, method: HttpMethod, segs: string[]) {
   const base = getRunUrl();
-  const { search } = new URL(request.url);
+  const { search } = new URL(req.url);
   const path = segs?.length ? `/${segs.join("/")}` : "";
   const url = `${base}${path}${search}`;
 
-  // Copy headers except hop-by-hop
+  // copy headers, skip hop-by-hop
   const headers: Record<string, string> = {};
-  for (const [k, v] of request.headers.entries()) {
+  for (const [k, v] of req.headers.entries()) {
     const lower = k.toLowerCase();
     if (["host", "connection", "transfer-encoding", "content-length"].includes(lower)) continue;
     headers[k] = v;
@@ -43,7 +43,7 @@ async function proxyToRun(request: Request, method: HttpMethod, segs: string[]) 
 
   let data: ArrayBuffer | undefined;
   if (method !== "GET" && method !== "HEAD") {
-    data = await request.arrayBuffer();
+    data = await req.arrayBuffer();
   }
 
   const idClient = await getIdClient();
@@ -53,8 +53,7 @@ async function proxyToRun(request: Request, method: HttpMethod, segs: string[]) 
     headers,
     data,
     responseType: "arraybuffer",
-    // Important for Cloud Run: pass through status codes untouched
-    validateStatus: () => true,
+    validateStatus: () => true, // pass through Cloud Run status codes
   });
 
   const respHeaders = new Headers();
@@ -68,22 +67,30 @@ async function proxyToRun(request: Request, method: HttpMethod, segs: string[]) 
   });
 }
 
-// Next App Router handlers (Web standard Request + params)
-export async function GET(req: Request, ctx: { params: { path?: string[] } }) {
-  return proxyToRun(req, "GET", ctx.params.path ?? []);
+// NOTE: Next 15 expects params as a Promise in App Router types.
+type Ctx = { params: Promise<{ path: string[] }> };
+
+export async function GET(req: NextRequest, ctx: Ctx) {
+  const { path } = await ctx.params;
+  return proxyToRun(req, "GET", path ?? []);
 }
-export async function POST(req: Request, ctx: { params: { path?: string[] } }) {
-  return proxyToRun(req, "POST", ctx.params.path ?? []);
+export async function POST(req: NextRequest, ctx: Ctx) {
+  const { path } = await ctx.params;
+  return proxyToRun(req, "POST", path ?? []);
 }
-export async function OPTIONS(req: Request, ctx: { params: { path?: string[] } }) {
-  return proxyToRun(req, "OPTIONS", ctx.params.path ?? []);
+export async function OPTIONS(req: NextRequest, ctx: Ctx) {
+  const { path } = await ctx.params;
+  return proxyToRun(req, "OPTIONS", path ?? []);
 }
-export async function PUT(req: Request, ctx: { params: { path?: string[] } }) {
-  return proxyToRun(req, "PUT", ctx.params.path ?? []);
+export async function PUT(req: NextRequest, ctx: Ctx) {
+  const { path } = await ctx.params;
+  return proxyToRun(req, "PUT", path ?? []);
 }
-export async function PATCH(req: Request, ctx: { params: { path?: string[] } }) {
-  return proxyToRun(req, "PATCH", ctx.params.path ?? []);
+export async function PATCH(req: NextRequest, ctx: Ctx) {
+  const { path } = await ctx.params;
+  return proxyToRun(req, "PATCH", path ?? []);
 }
-export async function DELETE(req: Request, ctx: { params: { path?: string[] } }) {
-  return proxyToRun(req, "DELETE", ctx.params.path ?? []);
+export async function DELETE(req: NextRequest, ctx: Ctx) {
+  const { path } = await ctx.params;
+  return proxyToRun(req, "DELETE", path ?? []);
 }
