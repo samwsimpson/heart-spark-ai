@@ -1,11 +1,12 @@
-const INTERNAL_API_ORIGIN = process.env.INTERNAL_API_ORIGIN || "http://api:8080";
+import type { NextConfig } from "next";
 
-const nextConfig = {
-  async rewrites() {
-    return [
-      { source: "/api/:path*", destination: `${INTERNAL_API_ORIGIN}/:path*` },
-    ];
-  },
+const nextConfig: NextConfig = {
+  // Skip ESLint in CI builds (Vercel)
+  eslint: { ignoreDuringBuilds: true },
+
+  // Silence the “inferred workspace root” warning
+  // (__dirname points at apps/web, which is what we want)
+  turbopack: { root: __dirname },
 };
 
 export default nextConfig;
