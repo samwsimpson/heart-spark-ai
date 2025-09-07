@@ -1,26 +1,62 @@
-"use client";
+export type ApiInit = RequestInit & { auth?: boolean };
 
-export function getToken() {
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE && process.env.NEXT_PUBLIC_API_BASE.trim() !== ""
+    ? process.env.NEXT_PUBLIC_API_BASE
+    : "/api/run-proxy";
+
+export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("token");
+  return window.localStorage.getItem("token");
 }
 
 export function setToken(token: string | null) {
   if (typeof window === "undefined") return;
-  if (token) localStorage.setItem("token", token);
-  else localStorage.removeItem("token");
+  if (token) window.localStorage.setItem("token", token);
+  else window.localStorage.removeItem("token");
 }
 
-export async function api(path: string, init: RequestInit = {}) {
-  const headers = new Headers(init.headers);
-  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  const t = getToken();
-  if (t) headers.set("Authorization", `Bearer ${t}`);
+function joinUrl(base: string, path: string) {
+  if (/^https?:\/\//i.test(path)) return path;
+  const b = base.replace(/\/+$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${b}${p}`;
+}
 
-  const res = await fetch(`/api${path}`, { ...init, headers });
-  const text = await res.text();
-  let data: any = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-  if (!res.ok) throw new Error(typeof data === "string" ? data : data?.detail ?? res.statusText);
-  return data;
+export async function api<T = any>(path: string, init: ApiInit = {}): Promise<T> {
+  const url = joinUrl(API_BASE, path);
+
+  const headers = new Headers(init.headers || {});
+  // Attach JSON header if there's a body and no explicit content-type
+  if (init.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  // Default auth=true. Only skip if the caller set auth:false.
+  const wantsAuth = init.auth !== false;
+  if (wantsAuth) {
+    const token = getToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const resp = await fetch(url, { ...init, headers });
+
+  // Throw useful error on non-2xx
+  if (!resp.ok) {
+    let msg = `${resp.status} ${resp.statusText}`;
+    try {
+      const data = await resp.json();
+      msg = (data?.detail || data?.message || msg) as string;
+    } catch {
+      /* ignore parse errors */
+    }
+    throw new Error(msg);
+  }
+
+  const ct = resp.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    return (await resp.json()) as T;
+  }
+  // fall back to text/other
+  return (await resp.text()) as unknown as T;
 }
