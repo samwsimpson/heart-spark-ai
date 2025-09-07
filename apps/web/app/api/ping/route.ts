@@ -1,7 +1,4 @@
-export const dynamic = "force-dynamic"; // never prerender this
-
+export const dynamic = "force-dynamic";
 export async function GET() {
-  return new Response(JSON.stringify({ ok: true }), {
-    headers: { "content-type": "application/json" },
-  });
+  return Response.json({ status: "ok" }, { status: 200 });
 }
