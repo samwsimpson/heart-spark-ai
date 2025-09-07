@@ -1,12 +1,11 @@
-import type { NextConfig } from 'next';
+const INTERNAL_API_ORIGIN = process.env.INTERNAL_API_ORIGIN || "http://api:8080";
 
-const nextConfig: NextConfig = {
-  images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: 'storage.googleapis.com' },
-      { protocol: 'https', hostname: 'lh3.googleusercontent.com' }
-    ]
-  }
+const nextConfig = {
+  async rewrites() {
+    return [
+      { source: "/api/:path*", destination: `${INTERNAL_API_ORIGIN}/:path*` },
+    ];
+  },
 };
 
 export default nextConfig;

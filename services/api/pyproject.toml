@@ -10,6 +10,14 @@ fastapi = "^0.116.1"
 uvicorn = {extras = ["standard"], version = "^0.35.0"}
 pydantic-settings = "^2.10.1"
 python-multipart = "^0.0.20"
+sqlalchemy = ">=2.0"
+alembic = ">=1.13"
+psycopg = {version = ">=3.1", extras = ["binary"]}
+passlib = {version = "1.7.4", extras = ["bcrypt"]}
+pyjwt = ">=2.8"
+email-validator = ">=2.1"
+redis = ">=5"
+bcrypt = "<4.0"
 
 [tool.poetry.group.dev.dependencies]
 uvicorn = {extras = ["standard"], version = "^0.35.0"}

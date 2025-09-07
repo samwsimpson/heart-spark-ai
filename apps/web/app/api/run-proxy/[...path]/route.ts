@@ -1,3 +1,4 @@
+export const runtime = 'nodejs';
 // Serverless proxy that attaches a Google ID token (audience = RUN_URL)
 // and forwards requests to Cloud Run.
 //

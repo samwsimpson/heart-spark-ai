@@ -1,22 +1,28 @@
+from __future__ import annotations
+
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic_settings import BaseSettings
 
-class Settings(BaseSettings):
-    ENV: str = "local"
-    ALLOWED_ORIGINS: str = "http://localhost:3000"
+from app.routes_auth import router as auth_router
+from app.routes_ws import router as ws_router
 
-settings = Settings()
-app = FastAPI(title="Dating API", version="0.1.0")
+app = FastAPI(title="Dating API")
 
-origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
+# CORS
+origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-    allow_headers=["Authorization","Content-Type","X-Requested-With"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+# Basic health + sample
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 @app.get("/healthz")
 def healthz():
@@ -26,10 +32,19 @@ def healthz():
 def greet(name: str = "World"):
     return {"message": f"Hello, {name}!"}
 
-@app.options("/{path:path}")
-def options_handler():
-    return {}
+# --- Debug: list routes (no auth) ---
+@app.get("/__routes")
+def __routes():
+    out = []
+    for r in app.router.routes:
+        try:
+            path = r.path
+        except Exception:
+            path = getattr(r, "path_format", str(r))
+        methods = sorted(list(getattr(r, "methods", []) or []))
+        out.append({"path": path, "methods": methods})
+    return out
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+# Routers
+app.include_router(auth_router)
+app.include_router(ws_router)

@@ -1,32 +1,35 @@
 swagger: "2.0"
 info:
   title: heart-api
-  version: "4.0.0"
+  version: "1.3.2"
 schemes:
   - https
 basePath: /
 produces:
   - application/json
-security: []  # no API key at gateway
+security: []   # no API key required at the gateway
 
 paths:
   /health:
     get:
       operationId: health
       responses:
-        "200": { description: ok }
+        "200":
+          description: ok
       x-google-backend:
         address: https://heart-api-xrttmrjoma-uc.a.run.app
-        path_translation: APPEND_PATH_TO_ADDRESS
 
   /auth/login:
     post:
       operationId: login
-      consumes: [application/json]
+      consumes:
+        - application/json
       responses:
-        "200": { description: ok }
-        "401": { description: unauthorized }
-        "422": { description: validation error }
+        "200":
+          description: ok
+        "401":
+          description: unauthorized
+        "422":
+          description: validation error
       x-google-backend:
         address: https://heart-api-xrttmrjoma-uc.a.run.app
-        path_translation: APPEND_PATH_TO_ADDRESS
