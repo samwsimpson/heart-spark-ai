@@ -1,26 +1,33 @@
+# services/api/Dockerfile
 FROM python:3.11-slim
-
-# System deps (build essentials for any binary wheels you might add later)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl && \
-    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Poetry globally (no virtualenv inside container to keep it simple)
-ENV POETRY_VERSION=1.8.3 \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
     POETRY_VIRTUALENVS_CREATE=false \
-    PIP_NO_CACHE_DIR=1
-RUN pip install "poetry==$POETRY_VERSION"
+    POETRY_NO_INTERACTION=1 \
+    PORT=8080
 
-# Pre-copy lockfiles to leverage Docker layer caching
-COPY pyproject.toml poetry.lock* /app/
+# System deps often needed
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+  && rm -rf /var/lib/apt/lists/*
 
-# Install runtime dependencies only (no dev)
-RUN poetry install --no-root --only main
+# Install Poetry
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir poetry
 
-# Bring in the app code
-COPY app /app/app
+# Copy only dependency files first (layer cache)
+COPY services/api/pyproject.toml services/api/poetry.lock ./
 
+# Install runtime deps
+RUN poetry install --only main
+
+# Copy application code
+COPY services/api/app ./app
+
+# Expose and run
 EXPOSE 8080
-CMD ["uvicorn","app.main:app","--host","0.0.0.0","--port","8080"]
+CMD ["sh","-c","uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
