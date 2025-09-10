@@ -6,7 +6,8 @@ export async function GET(req: Request) {
   return Response.json({
     ok: true,
     where: "run-proxy/debug (local)",
-    url: url.pathname + url.search,
+    path: url.pathname,
+    search: url.search,
     env: {
       NODE_ENV: process.env.NODE_ENV ?? null,
       GCP_RUN_URL: process.env.GCP_RUN_URL ?? null,
