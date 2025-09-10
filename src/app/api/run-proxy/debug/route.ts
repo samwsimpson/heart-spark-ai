@@ -1,10 +1,9 @@
-import { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export async function GET(_req: NextRequest) {
+
+export async function GET() {
   return Response.json({
-    GCP_RUN_URL: process.env.GCP_RUN_URL || "(unset)",
-    GCP_SA_EMAIL: process.env.GCP_SA_EMAIL || "(unset)",
-    has_key: Boolean(process.env.GCP_SA_PRIVATE_KEY),
+    using_GCP_RUN_URL: process.env.GCP_RUN_URL || "(unset)",
+    note: "If this doesn't show the Cloud Run *service* URL (…us-central1.run.app), update Vercel envs and redeploy.",
   });
 }
