@@ -33,6 +33,28 @@ async function proxy(req: NextRequest, method: HttpMethod, segs?: string[]) {
 
   const path = (segs?.length ? "/" + segs.join("/") : "");
   const url = runUrl + path + search;
+  async function proxy(req: NextRequest, method: HttpMethod, segs?: string[]) {
+    // --- local debug without forwarding upstream ---
+    if (segs?.length === 1 && segs[0].toLowerCase() === "debug") {
+      const gcpRunUrl = process.env.GCP_RUN_URL || "(unset)";
+      const gcpSaEmail = process.env.GCP_SA_EMAIL ? "set" : "unset";
+      const gcpSaKey   = process.env.GCP_SA_PRIVATE_KEY ? "set" : "unset";
+      const urlFromReq = new URL(req.url).toString();
+
+      return Response.json({
+        ok: true,
+        note: "This came from Next.js, not FastAPI. If GCP_RUN_URL isn't the Cloud Run *service* URL, fix your Vercel envs.",
+        method,
+        segs,
+        urlFromReq,
+        env: {
+          GCP_RUN_URL: gcpRunUrl,
+          GCP_SA_EMAIL: gcpSaEmail,
+          GCP_SA_PRIVATE_KEY: gcpSaKey,
+        },
+      });
+    }
+    // --- normal proxy flow continues below ---
 
   // Copy through headers, but strip hop-by-hop/host
   const headers: Record<string, string> = {};
