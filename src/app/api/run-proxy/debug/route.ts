@@ -1,10 +1,7 @@
-import type { NextRequest } from "next/server";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function OPTIONS() {
-  // Remove the 405 preflight noise just in case
   return new Response(null, {
     status: 204,
     headers: {
@@ -15,11 +12,10 @@ export async function OPTIONS() {
   });
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   return Response.json({
     ok: true,
-    note:
-      "This is the Next.js debug route (not forwarded to FastAPI). If GCP_RUN_URL is not your Cloud Run *service* URL, fix your Vercel envs.",
+    note: "This is the Next.js debug route under /api/run-proxy/debug (not forwarded).",
     env: {
       GCP_RUN_URL: process.env.GCP_RUN_URL || "(unset)",
       GCP_SA_EMAIL: process.env.GCP_SA_EMAIL ? "set" : "unset",
