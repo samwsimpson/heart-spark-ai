@@ -1,9 +1,30 @@
+import type { NextRequest } from "next/server";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function OPTIONS() {
+  // Remove the 405 preflight noise just in case
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
+  });
+}
+
+export async function GET(_req: NextRequest) {
   return Response.json({
-    using_GCP_RUN_URL: process.env.GCP_RUN_URL || "(unset)",
-    note: "If this doesn't show the Cloud Run *service* URL (…us-central1.run.app), update Vercel envs and redeploy.",
+    ok: true,
+    note:
+      "This is the Next.js debug route (not forwarded to FastAPI). If GCP_RUN_URL is not your Cloud Run *service* URL, fix your Vercel envs.",
+    env: {
+      GCP_RUN_URL: process.env.GCP_RUN_URL || "(unset)",
+      GCP_SA_EMAIL: process.env.GCP_SA_EMAIL ? "set" : "unset",
+      GCP_SA_PRIVATE_KEY: process.env.GCP_SA_PRIVATE_KEY ? "set" : "unset",
+      NODE_ENV: process.env.NODE_ENV,
+    },
   });
 }
