@@ -1,9 +1,5 @@
-export const runtime = "nodejs";
+export const metadata = { title: "Root" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html>
-      <body>{children}</body>
-    </html>
-  );
+  return <html lang="en"><body>{children}</body></html>;
 }
